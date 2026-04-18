@@ -98,6 +98,13 @@ SESSION_STRING = os.getenv("TELEGRAM_SESSION_STRING")
 
 mcp = FastMCP("telegram")
 
+# Import and register pentest tools
+try:
+    from pentest_integration import register_pentest_tools
+    register_pentest_tools(mcp)
+except ImportError:
+    print("Warning: pentest_integration.py not found or could not be imported.")
+
 if SESSION_STRING:
     # Use the string session if available
     client = TelegramClient(StringSession(SESSION_STRING), TELEGRAM_API_ID, TELEGRAM_API_HASH)
