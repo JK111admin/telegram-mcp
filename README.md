@@ -175,6 +175,39 @@ GIF tools are currently limited: `get_gif_search` and `send_gif` are available, 
 
 ---
 
+
+## 🛠️ Troubleshooting MCP Client Connection Issues
+
+If your MCP client can start the server but tool calls fail, check the error class first:
+
+### 1) `HTTP 429 RESOURCE_EXHAUSTED` (quota/rate limit)
+This error comes from your model provider, not from this Telegram MCP server itself.
+
+What to do:
+- Verify billing/quota in the provider console for the model your client is using.
+- Reduce request concurrency in your client (fewer parallel tool calls).
+- Switch to a model/provider project with available quota.
+- Wait for quota reset if you are on daily/monthly limits.
+
+### 2) `Permission denied ... MCP configuration issue`
+This usually means the MCP client could not launch the server command exactly as configured.
+
+Checklist:
+- Ensure the configured executable path is correct and quoted on Windows.
+- Ensure the command runs manually in a terminal first.
+- Ensure env vars are present (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_SESSION_STRING`).
+- If using file-path tools, ensure MCP Roots / allowed root paths are configured; otherwise those tools are denied by design.
+- Restart the MCP client completely after config changes.
+
+### 3) Quick local smoke test
+Run the server command directly before wiring it into Windsurf/Cursor/Claude:
+
+```bash
+uv --directory /full/path/to/telegram-mcp run main.py
+```
+
+If this fails locally, fix that first. If this succeeds but the client still fails, the issue is in the client MCP config, command path, or provider quota.
+
 ## 📋 Requirements
 - Python 3.10+
 - [Telethon](https://docs.telethon.dev/)
