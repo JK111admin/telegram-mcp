@@ -22,7 +22,10 @@ and usernames (e.g., "@mychannel").
 import asyncio
 import io
 import os
+import re
 import sys
+from pathlib import Path
+from typing import List, Tuple
 
 from dotenv import load_dotenv
 from telethon import errors
@@ -89,6 +92,107 @@ def _phone_login(client: TelegramClient) -> None:
         client.sign_in(password=pw)
 
 
+def _choose_login_method() -> str:
+    print("Choose login method:")
+    print("  1) QR code login (recommended -- scan from your Telegram app)")
+    print("  2) Phone number + verification code")
+    return input("\nEnter 1 or 2 [default: 1]: ").strip() or "1"
+
+
+def _normalize_label(label: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "_", label.strip().lower())
+    normalized = re.sub(r"_+", "_", normalized).strip("_")
+    return normalized or "default"
+
+
+def _session_env_key(label: str) -> str:
+    normalized_label = _normalize_label(label)
+    if normalized_label == "default":
+        return "TELEGRAM_SESSION_STRING"
+    return f"TELEGRAM_SESSION_STRING_{normalized_label}"
+
+
+def _update_env_file(
+    session_string: str,
+    env_path: Path,
+    label: str = "",
+) -> None:
+    env_key = _session_env_key(label)
+    line = f"{env_key}={session_string}\n"
+    env_contents = env_path.read_text().splitlines(keepends=True) if env_path.exists() else []
+
+    for index, existing_line in enumerate(env_contents):
+        if existing_line.startswith(f"{env_key}="):
+            env_contents[index] = line
+            break
+    else:
+        env_contents.append(line)
+
+    env_path.write_text("".join(env_contents))
+
+
+def _authenticate_account(
+    api_id: int,
+    api_hash: str,
+    label: str,
+    method: str,
+) -> str:
+    client = TelegramClient(StringSession(), api_id, api_hash)
+    client.connect()
+
+    try:
+        if not client.is_user_authorized():
+            if method == "1":
+                _qr_login(client)
+            else:
+                _phone_login(client)
+
+        session_string = StringSession.save(client.session)
+        print("\nAuthentication successful!")
+        print("\n----- Session String -----")
+        print(f"\n{session_string}\n")
+        print(f"Environment key: {_session_env_key(label)}")
+        return session_string
+    finally:
+        client.disconnect()
+
+
+def _single_account_flow(api_id: int, api_hash: str) -> Tuple[str, str]:
+    print("This script will generate a session string for your Telegram account.")
+    print("The generated session string can be added to your .env file.")
+    print(
+        "\nYour credentials will NOT be stored on any server and are only used for local authentication.\n"
+    )
+
+    method = _choose_login_method()
+    label = ""
+    session_string = _authenticate_account(api_id, api_hash, label, method)
+    return label, session_string
+
+
+def _multi_account_flow(api_id: int, api_hash: str) -> List[Tuple[str, str]]:
+    sessions: List[Tuple[str, str]] = []
+
+    print("This script will generate session strings for multiple Telegram accounts.")
+    print("Leave the label blank to auto-name the account.")
+
+    while True:
+        print(f"\n----- Account {len(sessions) + 1} -----")
+        label = input("Account label [optional]: ").strip()
+        if not label:
+            label = f"account_{len(sessions) + 1}"
+
+        method = _choose_login_method()
+        session_string = _authenticate_account(api_id, api_hash, label, method)
+        sessions.append((label, session_string))
+
+        another = input("\nAdd another account? (y/N): ").strip().lower()
+        if another != "y":
+            break
+
+    return sessions
+
+
 def main() -> None:
     API_ID = os.getenv("TELEGRAM_API_ID")
     API_HASH = os.getenv("TELEGRAM_API_HASH")
@@ -105,63 +209,35 @@ def main() -> None:
         sys.exit(1)
 
     print("\n----- Telegram Session String Generator -----\n")
-    print("This script will generate a session string for your Telegram account.")
-    print("The generated session string can be added to your .env file.")
-    print(
-        "\nYour credentials will NOT be stored on any server and are only used for local authentication.\n"
+    multi_account = (
+        input("Generate session strings for multiple accounts? (y/N): ").strip().lower()
     )
 
-    print("Choose login method:")
-    print("  1) QR code login (recommended -- scan from your Telegram app)")
-    print("  2) Phone number + verification code")
-    method = input("\nEnter 1 or 2 [default: 1]: ").strip() or "1"
-
     try:
-        client = TelegramClient(StringSession(), API_ID, API_HASH)
-        client.connect()
+        if multi_account == "y":
+            sessions = _multi_account_flow(API_ID, API_HASH)
+        else:
+            sessions = [_single_account_flow(API_ID, API_HASH)]
 
-        if not client.is_user_authorized():
-            if method == "1":
-                _qr_login(client)
-            else:
-                _phone_login(client)
+        if not sessions:
+            print("No accounts were authenticated.")
+            return
 
-        session_string = StringSession.save(client.session)
-
-        print("\nAuthentication successful!")
-        print("\n----- Your Session String -----")
-        print(f"\n{session_string}\n")
-        print("Add this to your .env file as:")
-        print(f"TELEGRAM_SESSION_STRING={session_string}")
-        print("\nIMPORTANT: Keep this string private and never share it with anyone!")
+        print("\nIMPORTANT: Keep these strings private and never share them with anyone!")
 
         choice = input(
-            "\nWould you like to automatically update your .env file with this session string? (y/N): "
+            "\nWould you like to automatically update your .env file with these session strings? (y/N): "
         )
         if choice.lower() == "y":
             try:
-                with open(".env", "r") as file:
-                    env_contents = file.readlines()
-
-                session_string_line_found = False
-                for i, line in enumerate(env_contents):
-                    if line.startswith("TELEGRAM_SESSION_STRING="):
-                        env_contents[i] = f"TELEGRAM_SESSION_STRING={session_string}\n"
-                        session_string_line_found = True
-                        break
-
-                if not session_string_line_found:
-                    env_contents.append(f"TELEGRAM_SESSION_STRING={session_string}\n")
-
-                with open(".env", "w") as file:
-                    file.writelines(env_contents)
+                env_path = Path(".env")
+                for label, session_string in sessions:
+                    _update_env_file(session_string, env_path, label)
 
                 print("\n.env file updated successfully!")
             except Exception as e:
                 print(f"\nError updating .env file: {e}")
-                print("Please manually add the session string to your .env file.")
-
-        client.disconnect()
+                print("Please manually add the session strings to your .env file.")
 
     except Exception as e:
         print(f"\nError: {e}")
