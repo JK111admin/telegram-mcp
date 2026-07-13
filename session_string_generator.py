@@ -24,6 +24,7 @@ import io
 import os
 import re
 import sys
+import webbrowser
 from pathlib import Path
 from typing import List, Tuple
 
@@ -112,23 +113,93 @@ def _session_env_key(label: str) -> str:
     return f"TELEGRAM_SESSION_STRING_{normalized_label}"
 
 
-def _update_env_file(
-    session_string: str,
-    env_path: Path,
-    label: str = "",
-) -> None:
-    env_key = _session_env_key(label)
-    line = f"{env_key}={session_string}\n"
+def _set_env_var(env_path: Path, key: str, value: str) -> None:
+    line = f"{key}={value}\n"
     env_contents = env_path.read_text().splitlines(keepends=True) if env_path.exists() else []
 
     for index, existing_line in enumerate(env_contents):
-        if existing_line.startswith(f"{env_key}="):
+        if existing_line.startswith(f"{key}="):
             env_contents[index] = line
             break
     else:
         env_contents.append(line)
 
     env_path.write_text("".join(env_contents))
+
+
+def _update_env_file(
+    session_string: str,
+    env_path: Path,
+    label: str = "",
+) -> None:
+    _set_env_var(env_path, _session_env_key(label), session_string)
+
+
+def _prompt_for_api_credentials() -> Tuple[int, str]:
+    """Guide the user through obtaining TELEGRAM_API_ID / TELEGRAM_API_HASH.
+
+    Opens https://my.telegram.org/apps in the default browser and walks the
+    user through creating an application, then prompts them to paste the
+    resulting credentials. Returns a validated (api_id, api_hash) pair.
+    """
+    apps_url = "https://my.telegram.org/apps"
+
+    print("\n----- Telegram API Credentials Setup -----\n")
+    print("You need a TELEGRAM_API_ID and TELEGRAM_API_HASH to continue.")
+    print("Follow these steps:")
+    print(f"  1) Log in at {apps_url} with your phone number.")
+    print("  2) Open 'API development tools'.")
+    print("  3) Create an application (any title/short name; platform 'Desktop').")
+    print("  4) Copy the 'App api_id' and 'App api_hash' values shown.\n")
+
+    if input("Open the page in your browser now? (Y/n): ").strip().lower() != "n":
+        try:
+            webbrowser.open(apps_url)
+        except Exception as e:
+            print(f"Could not open a browser automatically: {e}")
+            print(f"Please open {apps_url} manually.")
+
+    while True:
+        api_id_raw = input("\nEnter your TELEGRAM_API_ID: ").strip()
+        try:
+            api_id = int(api_id_raw)
+        except ValueError:
+            print("API ID must be an integer. Please try again.")
+            continue
+
+        api_hash = input("Enter your TELEGRAM_API_HASH: ").strip()
+        if not api_hash:
+            print("API hash cannot be empty. Please try again.")
+            continue
+
+        return api_id, api_hash
+
+
+def _resolve_api_credentials() -> Tuple[int, str]:
+    api_id_raw = os.getenv("TELEGRAM_API_ID")
+    api_hash = os.getenv("TELEGRAM_API_HASH")
+
+    if api_id_raw and api_hash:
+        try:
+            return int(api_id_raw), api_hash
+        except ValueError:
+            print("Warning: TELEGRAM_API_ID is not a valid integer; re-entering.")
+
+    api_id, api_hash = _prompt_for_api_credentials()
+
+    save = (
+        input("\nSave these credentials to your .env file for next time? (Y/n): ").strip().lower()
+    )
+    if save != "n":
+        try:
+            env_path = Path(".env")
+            _set_env_var(env_path, "TELEGRAM_API_ID", str(api_id))
+            _set_env_var(env_path, "TELEGRAM_API_HASH", api_hash)
+            print(".env file updated with API credentials.")
+        except Exception as e:
+            print(f"Could not update .env file: {e}")
+
+    return api_id, api_hash
 
 
 def _authenticate_account(
@@ -194,21 +265,10 @@ def _multi_account_flow(api_id: int, api_hash: str) -> List[Tuple[str, str]]:
 
 
 def main() -> None:
-    API_ID = os.getenv("TELEGRAM_API_ID")
-    API_HASH = os.getenv("TELEGRAM_API_HASH")
-
-    if not API_ID or not API_HASH:
-        print("Error: TELEGRAM_API_ID and TELEGRAM_API_HASH must be set in .env file")
-        print("Create an .env file with your credentials from https://my.telegram.org/apps")
-        sys.exit(1)
-
-    try:
-        API_ID = int(API_ID)
-    except ValueError:
-        print("Error: TELEGRAM_API_ID must be an integer")
-        sys.exit(1)
-
     print("\n----- Telegram Session String Generator -----\n")
+
+    API_ID, API_HASH = _resolve_api_credentials()
+
     multi_account = (
         input("Generate session strings for multiple accounts? (y/N): ").strip().lower()
     )

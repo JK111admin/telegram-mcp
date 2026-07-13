@@ -3,6 +3,7 @@ from pathlib import Path
 from session_string_generator import (
     _normalize_label,
     _session_env_key,
+    _set_env_var,
     _update_env_file,
 )
 
@@ -30,4 +31,16 @@ def test_update_env_file_replaces_and_appends(tmp_path):
         "TELEGRAM_SESSION_STRING=new-session\n"
         "OTHER=value\n"
         "TELEGRAM_SESSION_STRING_work_account=work-session\n"
+    )
+
+
+def test_set_env_var_creates_and_updates(tmp_path):
+    env_path = Path(tmp_path) / ".env"
+
+    _set_env_var(env_path, "TELEGRAM_API_ID", "12345")
+    _set_env_var(env_path, "TELEGRAM_API_HASH", "abcdef")
+    _set_env_var(env_path, "TELEGRAM_API_ID", "67890")
+
+    assert env_path.read_text(encoding="utf-8") == (
+        "TELEGRAM_API_ID=67890\n" "TELEGRAM_API_HASH=abcdef\n"
     )
