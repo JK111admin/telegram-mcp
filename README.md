@@ -203,7 +203,9 @@ uv sync
 ```bash
 uv run session_string_generator.py
 ```
-Follow the prompts to authenticate and update your `.env` file.
+Follow the prompts to authenticate and update your `.env` file. The generator
+can also walk through multiple accounts in one run and save them as
+`TELEGRAM_SESSION_STRING_<label>` entries.
 
 ### 4. Configure .env
 
@@ -215,6 +217,8 @@ TELEGRAM_API_HASH=your_api_hash_here
 TELEGRAM_SESSION_NAME=anon
 TELEGRAM_SESSION_STRING=your_session_string_here
 ```
+For multiple accounts, use `TELEGRAM_SESSION_STRING_<label>` entries such as
+`TELEGRAM_SESSION_STRING_work=...`.
 Get your API credentials at [my.telegram.org/apps](https://my.telegram.org/apps).
 
 ---
