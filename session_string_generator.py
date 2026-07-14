@@ -67,8 +67,9 @@ def _qr_login(client: TelegramClient) -> None:
         client.sign_in(password=pw)
 
 
-def _phone_login(client: TelegramClient) -> None:
-    phone = input("Please enter your phone (or bot token): ")
+def _phone_login(client: TelegramClient, phone: str = "") -> None:
+    if not phone:
+        phone = input("Please enter your phone (or bot token): ").strip()
 
     try:
         client.send_code_request(phone)
@@ -207,6 +208,7 @@ def _authenticate_account(
     api_hash: str,
     label: str,
     method: str,
+    phone: str = "",
 ) -> str:
     client = TelegramClient(StringSession(), api_id, api_hash)
     client.connect()
@@ -216,7 +218,7 @@ def _authenticate_account(
             if method == "1":
                 _qr_login(client)
             else:
-                _phone_login(client)
+                _phone_login(client, phone)
 
         session_string = StringSession.save(client.session)
         print("\nAuthentication successful!")
@@ -244,18 +246,31 @@ def _single_account_flow(api_id: int, api_hash: str) -> Tuple[str, str]:
 def _multi_account_flow(api_id: int, api_hash: str) -> List[Tuple[str, str]]:
     sessions: List[Tuple[str, str]] = []
 
-    print("This script will generate session strings for multiple Telegram accounts.")
-    print("Leave the label blank to auto-name the account.")
+    print("\nLet's set up your Telegram accounts one at a time.")
+    print("For each account I'll ask for the phone number, then guide you")
+    print("through entering the login code Telegram sends you.\n")
 
     while True:
-        print(f"\n----- Account {len(sessions) + 1} -----")
-        label = input("Account label [optional]: ").strip()
-        if not label:
-            label = f"account_{len(sessions) + 1}"
+        account_no = len(sessions) + 1
+        print(f"\n===== Account {account_no} =====")
 
+        phone = input("Phone number in international format (e.g. +4512345678): ").strip()
+
+        label = input("Label for this account [blank = auto-name]: ").strip()
+        if not label:
+            label = f"account_{account_no}"
+
+        print("\nHow do you want to log in to this account?")
         method = _choose_login_method()
-        session_string = _authenticate_account(api_id, api_hash, label, method)
-        sessions.append((label, session_string))
+
+        try:
+            session_string = _authenticate_account(api_id, api_hash, label, method, phone)
+            sessions.append((label, session_string))
+        except Exception as e:
+            print(f"\nCould not authenticate this account: {e}")
+            retry = input("Try this account again? (y/N): ").strip().lower()
+            if retry == "y":
+                continue
 
         another = input("\nAdd another account? (y/N): ").strip().lower()
         if another != "y":
