@@ -207,6 +207,11 @@ Follow the prompts to authenticate and update your `.env` file. The generator
 can also walk through multiple accounts in one run and save them as
 `TELEGRAM_SESSION_STRING_<label>` entries.
 
+If `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` are not already set, the generator
+opens [my.telegram.org/apps](https://my.telegram.org/apps) in your browser,
+guides you through creating the application, and prompts you to paste the
+API ID and hash (optionally saving them to `.env`).
+
 ### 4. Configure .env
 
 Copy `.env.example` to `.env` and fill in your values:
